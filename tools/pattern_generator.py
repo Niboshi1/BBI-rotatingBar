@@ -11,7 +11,7 @@ def Convert(img8):
     a = a*a2
     return a.sum(axis=1)
 
-def draw_bar(angle, w, h):
+def draw_bar(angle, w, h, draw=True):
     '''
     Returns a binary image with an angled bar
 
@@ -34,7 +34,9 @@ def draw_bar(angle, w, h):
     y_in = int(h/2 - np.sin(angle)*(radius_in))
     
     line_thickness = 10
-    cv2.line(img, (x_in, y_in), (x, y), 255, thickness=line_thickness)
+
+    if draw == True:
+        cv2.line(img, (x_in, y_in), (x, y), 255, thickness=line_thickness)
     #cv2.circle(img, (int(w/2), int(h/2)), radius, 255, 2)
     #cv2.rectangle(img, (0, 0), (w, h), 255, 3)
     #cv2.imwrite("img/frame_{}.png".format(angle), img)
