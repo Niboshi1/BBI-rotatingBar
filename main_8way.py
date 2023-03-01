@@ -29,29 +29,36 @@ h = np.uint32(img_h)
 func = np.uint32(1)
 
 # parameters for target
-target_angle = 0
-window = 80 # in degrees
-update_speed = 100 # in ms
-step_degree = 72 # in degrees/sec
-step = step_degree/(1000/update_speed) # step to update speed
-stim_thresh = 1000 # duration that the rat must stay in the window
-duration = 0 # in ms
-rat_inside_window = False
+target_position = 1
+target_angle = target_position*360/8
+tools.write_arduino(arduino, str(target_position))
+print("new_position", target_position)
 
+window = 30 # in degrees
+update_speed = 100 # in ms
+rat_reached_target = False
+flash_OnOFF = True
+flash_thresh = 5
+flash_frame = 1
 
 # connect to server
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 remote_ip = socket.gethostbyname(host)
 s.connect((remote_ip, port))
 
-print("thresh: ", stim_thresh, -2)
-
 while True:
+    # configure flash interval
+    if flash_frame%flash_thresh == 0:
+        flash_OnOFF = True
+        flash_frame = 1
+    else:
+        flash_OnOFF = False
+        flash_frame += 1
+
     # get angle from c++
     mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
     msg = mmap_file.read(4)
     rat_position = float(struct.unpack('f', msg)[0])
-    target_angle = tools.angle_step(target_angle, step)%360
 
     # convert rat_position to an alge assuming beggining of the window is 0
     if target_angle - window/2 > 0:
@@ -66,20 +73,18 @@ while True:
 
     # check if the position of rat is inside the window
     if fixed_rat_position < window:
-        if rat_inside_window == True:
-            if duration<stim_thresh:
-                duration += update_speed
-            else:
-                # send signal to Arduino
-                tools.write_arduino(arduino, 1)
-                print(rat_position, round(target_angle%360), duration)
-                # reset
-                duration = 0
-        elif rat_inside_window == False:
-            rat_inside_window = True
-    else:
-        rat_inside_window = False
-        duration = 0
+        rat_reached_target = True
+
+        # send signal to Arduino
+        tools.write_arduino(arduino, "s")
+        print(rat_position, round(target_angle%360))
+
+        # generate new target
+        rat_reached_target = False
+        target_position = np.random.randint(0, 7)
+        target_angle = target_position*360/8
+        tools.write_arduino(arduino, str(target_position))
+        print("new_position", target_position)
 
     # display result
     img = np.zeros((sample_dim, sample_dim, 3))
@@ -90,10 +95,11 @@ while True:
     y_rat = int(sample_dim/2 - np.sin(math.radians(rat_position))*(radius))
 
     cv2.ellipse(img, (int(sample_dim/2), int(sample_dim/2)), (radius, radius), 0, (target_angle+window/2)*-1, (target_angle-window/2)*-1, 255, -1)
-    cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x, y), (255, 255, 255), thickness=line_thickness)
+    if flash_OnOFF == True:
+        cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x, y), (255, 255, 255), thickness=line_thickness)
     cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x_rat, y_rat), (255, 100, 0), thickness=line_thickness)
 
-    if rat_inside_window == True:
+    if rat_reached_target == True:
         cv2.circle(img, (int(sample_dim/10), int(sample_dim/10)), 5, (0, 0, 255), -1)
 
     cv2.imshow('animation', img)
@@ -102,7 +108,7 @@ while True:
         cv2.destroyAllWindows()
         break
 
-    print(rat_position, round(target_angle%360), duration, "     ", end='\r')
+    print(rat_position, round(target_angle%360), flash_OnOFF, "     ", end='\r')
 
     # Send image to server
     # Below, the variable can be changed to either "1" or "2", which affects how the image is interpreted by PolyScan2.
@@ -116,7 +122,7 @@ while True:
     s.send(func)
     s.send(w)
     s.send(h)
-    s.send(tools.draw_bar(math.radians(float(target_angle)), img_w, img_h))
+    s.send(tools.draw_bar(math.radians(float(target_angle)), img_w, img_h, flash_OnOFF))
     
     time.sleep(update_speed/1000)
 
