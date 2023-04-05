@@ -96,12 +96,6 @@ with open(filename, 'a') as f:
             tools.write_arduino(arduino, "s")
             print(rat_position, round(target_angle%360))
 
-            # generate new target
-            target_position = np.random.randint(0, 7)
-            target_angle = target_position*360/8
-            tools.write_arduino(arduino, str(target_position))
-            print("new_position", target_position)
-
         # display result
         img = np.zeros((sample_dim, sample_dim, 3))
         x = int(sample_dim/2 + np.cos(math.radians(target_angle))*(radius))
@@ -128,7 +122,16 @@ with open(filename, 'a') as f:
         
         elapsed_time = time.time()-start
         write.writerow([elapsed_time, rat_position, round(target_angle%360), rat_reached_target])
-        rat_reached_target = False
+
+        # generate new target
+        if rat_reached_target:
+            # generate new target
+            target_position = np.random.randint(0, 7)
+            target_angle = target_position*360/8
+            tools.write_arduino(arduino, str(target_position))
+            
+            # reset goal
+            rat_reached_target = False
 
         time.sleep(update_speed/1000)
         # Send image to server
