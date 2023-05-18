@@ -16,10 +16,17 @@ import time
 arduino = serial.Serial(port='COM5', baudrate=115200, timeout=.1)
 time.sleep(3) # wait for Arduino to initialize
 
-# choose mode "ranodm" or "adjacent"
+# choose led_selection_mode "ranodm" or "adjacent"
 # "random" : randomely select next target
 # "adjacent" : select adjacent location
-mode = "random"
+led_selection_mode = "random"
+
+# choose task_mode "training" or "test"
+# "training" : LED will be on for 3 seconds even after the rat reached target
+# "test" : LED will trun off after the rat reached target
+task_mode = "training"
+# if task_mode is "training", change how long rats can be in the area
+duration_after_reach = 3 # in seconds
 
 # create start image
 sample_dim = 200
@@ -80,19 +87,9 @@ with open(filename, 'a') as f:
         mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
         msg = mmap_file.read(4)
         rat_position = float(struct.unpack('f', msg)[0])
-        if rat_position < 0:
-            rat_position = 360 + rat_position
-
-        # convert rat_position to an alge assuming beggining of the window is 0
-        fixed_rat_position = rat_position - (target_angle - window/2)
-        if fixed_rat_position < 0:
-            fixed_rat_position += 360
-        elif fixed_rat_position >= 360:
-            fixed_rat_position -= 360
 
         # check if the position of rat is inside the window
-        if fixed_rat_position < window:
-            rat_reached_target = True
+        rat_reached_target = tools.compare_results(target_angle, rat_position, window)
 
         # display result
         img = np.zeros((sample_dim, sample_dim, 3))
@@ -126,17 +123,40 @@ with open(filename, 'a') as f:
 
             # give reward if rat reached target
             if rat_reached_target:
-                # send signal to Arduino
-                tools.write_arduino(arduino, target_position, light_strength, 1)
-                print(rat_position, round(target_angle%360), light_strength)
+                # change behavior depending on task_mode
+                if task_mode == "training":
+                    reward_start = time.time()
+                    tools.write_arduino(arduino, target_position, light_strength, 1)
 
+                    # give reward if rat is still inside the reward zone
+                    while time.time()-reward_start < duration_after_reach: 
+                        # check if arduino is ready to recieve signal
+                        arduino_state = arduino.readline().decode().rstrip()
+                        if len(arduino_state) != 0:
+                            arduino_ready = arduino_state[-1]
+                            print(arduino_ready)
+                        if arduino_ready == "1":
+                            # get angle from c++
+                            mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
+                            msg = mmap_file.read(4)
+                            rat_position = float(struct.unpack('f', msg)[0])
+
+                            # check if the rat is still in the target zone
+                            if tools.compare_results(target_angle, rat_position, window):
+                                tools.write_arduino(arduino, target_position, light_strength, 1)
+                                print(rat_position, round(target_angle%360), light_strength)
+
+                elif task_mode == "test":
+                    # send signal to Arduino
+                    tools.write_arduino(arduino, target_position, light_strength, 1)
+                    print(rat_position, round(target_angle%360), light_strength)
 
             # generate new target that is different from previous
             prev_target_position = target_position
-            if mode == "random":
+            if led_selection_mode == "random":
                 while target_position == prev_target_position:
                     target_position = np.random.randint(0, 8)
-            if mode == "adjacent":
+            if led_selection_mode == "adjacent":
                 target_position = target_position + np.random.choice([1,-1])
                 # fix if there is overlap [0, 1, 2, 3, 4, 5, 6, 7]
                 if target_position == -1:
