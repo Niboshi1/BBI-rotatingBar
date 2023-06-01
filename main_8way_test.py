@@ -51,7 +51,7 @@ target_position = 1
 target_angle = target_position*360/8
 tools.write_arduino(arduino, target_position, light_strength, 0)
 
-window = 30 # in degrees
+window = 15 # in degrees
 update_speed = 100 # in ms
 rat_reached_target = False
 flash_OnOFF = True
@@ -59,7 +59,7 @@ flash_thresh = 5
 flash_frame = 1
 
 # parameters for trial
-trial_length = 30*60 # seconds
+trial_length = 5*60 # seconds
 trial_interval = 3 # seconds
 
 # define save file
@@ -134,7 +134,7 @@ with open(filename, 'a') as f:
                         arduino_state = arduino.readline().decode().rstrip()
                         if len(arduino_state) != 0:
                             arduino_ready = arduino_state[-1]
-                            print(arduino_ready)
+                        
                         if arduino_ready == "1":
                             # get angle from c++
                             mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
@@ -155,7 +155,7 @@ with open(filename, 'a') as f:
             prev_target_position = target_position
             if led_selection_mode == "random":
                 while target_position == prev_target_position:
-                    target_position = np.random.randint(0, 8)
+                    target_position = np.random.randint(1, 8) # TODO: fix camera
             if led_selection_mode == "adjacent":
                 target_position = target_position + np.random.choice([1,-1])
                 # fix if there is overlap [0, 1, 2, 3, 4, 5, 6, 7]
