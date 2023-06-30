@@ -36,6 +36,10 @@ target_position = 1
 target_angle = target_position*360/8
 tools.write_arduino(arduino, target_position, light_strength, 0)
 
+# initial parameters for shortest path task
+shortest_path = None
+task_failed = False
+
 rat_reached_target = False
 flash_OnOFF = True
 flash_frame = 1
@@ -55,6 +59,10 @@ if OPTIONS["tcp_ip_connection"]:
     remote_ip = socket.gethostbyname(OPTIONS["host"])
     s.connect((remote_ip, OPTIONS["port"]))
 
+# open mapped memory
+mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
+msg = mmap_file.read(4)
+init_rat_position = float(struct.unpack('f', msg)[0])
 
 with open(filename, 'a') as f:
     write = csv.writer(f)
@@ -80,7 +88,20 @@ with open(filename, 'a') as f:
         rat_position = float(struct.unpack('f', msg)[0])
 
         # check if the position of rat is inside the window
-        rat_reached_target = tools.compare_results(target_angle, rat_position, OPTIONS["window"])
+        rat_reached_target = tools.compare_angles(target_angle, rat_position, OPTIONS["window"])
+
+        # check if the rat is taking the shortest path
+        if OPTIONS["task_shortest_path"]:
+            if shortest_path == "cw":
+                # wrong path is positive
+                if tools.get_angle_diff(init_rat_position, rat_position) > OPTIONS["shortest_path_thresh"]:
+                    task_failed = True
+            elif shortest_path == "ccw":
+                # wrong path is negative
+                if tools.get_angle_diff(init_rat_position, rat_position) < -1*OPTIONS["shortest_path_thresh"]:
+                    task_failed = True
+            else:
+                task_failed = False
 
         # display result
         img = np.zeros((sample_dim, sample_dim, 3))
@@ -95,6 +116,7 @@ with open(filename, 'a') as f:
             cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x, y), (255, 255, 255), thickness=line_thickness)
         cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x_rat, y_rat), (255, 100, 0), thickness=line_thickness)
 
+        # draw a circle when rat reaches target
         if rat_reached_target == True:
             cv2.circle(img, (int(sample_dim/10), int(sample_dim/10)), 5, (0, 0, 255), -1)
 
@@ -102,6 +124,8 @@ with open(filename, 'a') as f:
         if cv2.waitKey(1) == ord('q'):
             # press q to terminate the loop
             cv2.destroyAllWindows()
+
+            # trun off lights on track
             tools.write_arduino(arduino, 9, light_strength, 3)
             break
 
@@ -118,7 +142,7 @@ with open(filename, 'a') as f:
             s.send(tools.draw_bar(math.radians(float(target_angle)), w, h))
 
         # generate new target
-        if rat_reached_target or elapsed_time > OPTIONS["trial_length"]:
+        if rat_reached_target or elapsed_time > OPTIONS["trial_length"] or task_failed:
 
             # give reward if rat reached target
             if rat_reached_target:
@@ -144,7 +168,7 @@ with open(filename, 'a') as f:
                             rat_position = float(struct.unpack('f', msg)[0])
 
                             # check if the rat is still in the target zone
-                            if tools.compare_results(target_angle, rat_position, OPTIONS["window"]):
+                            if tools.compare_angles(target_angle, rat_position, OPTIONS["window"]):
                                 tools.write_arduino(arduino, target_position, light_strength, 1)
                                 print(rat_position, round(target_angle%360), light_strength)
 
@@ -152,6 +176,25 @@ with open(filename, 'a') as f:
                     # send signal to Arduino
                     tools.write_arduino(arduino, target_position, light_strength, 1)
                     print(rat_position, round(target_angle%360), light_strength)
+
+
+
+            # trial intervals
+            tools.write_arduino(arduino, target_position, light_strength, 2)
+            if rat_reached_target:
+                # shorter interval
+                time.sleep(OPTIONS["trial_interval"])
+            else:
+                #long interval
+                time.sleep(OPTIONS["trial_interval"]*2)
+
+
+            # Prepare for next trial===========================================
+
+            # Get initial rat position
+            mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
+            msg = mmap_file.read(4)
+            init_rat_position = float(struct.unpack('f', msg)[0])
 
             # generate new target that is different from previous
             prev_target_position = target_position
@@ -165,30 +208,27 @@ with open(filename, 'a') as f:
                     target_position = 7
                 if target_position == 8:
                     target_position = 0
-
             target_angle = target_position*360/8
-
+            
             # gnerate new led_brightness
             light_strength = int(np.random.randint(OPTIONS["minimum_brightness"], OPTIONS["maximum_brightness"]))
 
-            # write target to arduino
-            tools.write_arduino(arduino, target_position, light_strength, 2)
-            if rat_reached_target:
-                # shorter interval
-                time.sleep(OPTIONS["trial_interval"])
-            else:
-                #long interval
-                time.sleep(OPTIONS["trial_interval"]*2)
+            # send new target to arduino
             tools.write_arduino(arduino, target_position, light_strength, 0)
-            
-            # reset goal
+
+            # calculate if the shortest path is cw or ccw
+            shortest_path = tools.calculate_shortest_path(init_rat_position, target_angle)
+            print("Shortest path is :", shortest_path)
+                
+            # reset parameters
+            task_failed = False
             rat_reached_target = False
 
             # next trial 
             trial_num += 1
             start = time.time()
 
-        time.sleep(OPTIONS["update_speed"]/1000)
+        #time.sleep(OPTIONS["update_speed"]/1000)
 
 # close mmap
 mmap_file.close()

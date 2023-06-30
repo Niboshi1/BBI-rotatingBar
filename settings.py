@@ -13,6 +13,10 @@ OPTIONS = {
     # if task_mode is "training", change how long rats can be in the area
     "duration_after_reach" : 3, # in seconds
 
+    # task to force the rat to take the shortest path
+    "task_shortest_path" : True,
+    "shortest_path_thresh" : 30, # degrees to allow the rat to take the wrong path
+
     # whether to send signal to OASYS
     "tcp_ip_connection" : False,
     # define TCP server address
