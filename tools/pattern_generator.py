@@ -25,7 +25,7 @@ def draw_bar(angle, w, h, draw=True):
     '''
     img = np.zeros((h, w))
     radius = int(w*0.3)
-    radius_in = int(w*0.05)
+    radius_in = int(w*0.1)
 
     x = int(w/2 + np.cos(angle)*(radius))
     y = int(h/2 - np.sin(angle)*(radius))
