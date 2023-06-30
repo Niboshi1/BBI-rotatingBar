@@ -13,6 +13,12 @@ OPTIONS = {
     # if task_mode is "training", change how long rats can be in the area
     "duration_after_reach" : 3, # in seconds
 
+    # whether to send signal to OASYS
+    "tcp_ip_connection" : False,
+    # define TCP server address
+    "host" : "localhost",
+    "port" : 2222,
+
     # create start image
     "sample_dim" : 200,
 
@@ -22,8 +28,8 @@ OPTIONS = {
     "func_n" : 1,
 
     # parameters for LED light
-    "maximum_brightness" : 255,
-    "minimum_brightness" : 200,
+    "maximum_brightness" : 50,
+    "minimum_brightness" : 20,
 
     # parameters for target
     "window" : 15, # in degrees, threshold around the target

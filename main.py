@@ -8,118 +8,194 @@ import tools
 import serial
 import math
 import cv2
+import csv
+import time
 
-# define TCP server address
-host = "localhost"
-port = 2222
+from settings import OPTIONS
 
 # define Arduino
-arduino = serial.Serial(port='COM4', baudrate=115200, timeout=.1)
+arduino = serial.Serial(port='COM5', baudrate=115200, timeout=.1)
+time.sleep(3) # wait for Arduino to initialize
 
 # create start image
-sample_dim = 200
+sample_dim = OPTIONS["sample_dim"]
 radius = int(sample_dim*0.3)
 line_thickness = 1
 
 # parameters for the light pattern
-img_w = 820
-img_h = 552
-w = np.uint32(img_w)
-h = np.uint32(img_h)
-func = np.uint32(1)
+w = np.uint32(OPTIONS["img_w"])
+h = np.uint32(OPTIONS["img_h"])
+func = np.uint32(OPTIONS["func_n"])
 
-# parameters for target
-target_angle = 0
-window = 80 # in degrees
-update_speed = 100 # in ms
-step_degree = 72 # in degrees/sec
-step = step_degree/(1000/update_speed) # step to update speed
-stim_thresh = 1000 # duration that the rat must stay in the window
-duration = 0 # in ms
-rat_inside_window = False
+# parameters for LED light
+light_strength = OPTIONS["maximum_brightness"] # np.random.randint(OPTIONS["minimum_brightness"], OPTIONS["maximum_brightness"])
 
+# initialize target
+prev_target_position = -1
+target_position = 1
+target_angle = target_position*360/8
+tools.write_arduino(arduino, target_position, light_strength, 0)
+
+rat_reached_target = False
+flash_OnOFF = True
+flash_frame = 1
+
+# define save file
+headers = ["time", "trial", "rat_position", "target_position_from",  "target_position_to", "reached_target", "brightness"]
+filename = 'behavioral_results' + time.strftime("%Y%m%d-%H%M%S") + '.csv'
+
+# start session
+start = time.time()
+trial_num = 0
+correct_trial_num = 0
 
 # connect to server
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-remote_ip = socket.gethostbyname(host)
-s.connect((remote_ip, port))
+if OPTIONS["tcp_ip_connection"]:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    remote_ip = socket.gethostbyname(OPTIONS["host"])
+    s.connect((remote_ip, OPTIONS["port"]))
 
-print("thresh: ", stim_thresh, -2)
 
-while True:
-    # get angle from c++
-    mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
-    msg = mmap_file.read(4)
-    rat_position = float(struct.unpack('f', msg)[0])
-    target_angle = tools.angle_step(target_angle, step)%360
+with open(filename, 'a') as f:
+    write = csv.writer(f)
+    write.writerow(headers)
 
-    # convert rat_position to an alge assuming beggining of the window is 0
-    if target_angle - window/2 > 0:
-        _target_angle = target_angle - window/2
-    else:
-        _target_angle = target_angle - window/2 + 360
+    while True:
+        # configure flash interval
+        if flash_frame%OPTIONS["flash_thresh"] == 0:
+            flash_OnOFF = True
+            flash_frame = 1
+        else:
+            flash_OnOFF = False
+            flash_frame += 1
 
-    if rat_position > _target_angle:
-        fixed_rat_position = rat_position - _target_angle
-    else:
-        fixed_rat_position = rat_position - _target_angle + 360
+        # raise task difficulity after 20 correct trials
+        if correct_trial_num == 20:
+            OPTIONS["minimum_brightness"] = 1
+            OPTIONS["maximum_brightness"] = 20
 
-    # check if the position of rat is inside the window
-    if fixed_rat_position < window:
-        if rat_inside_window == True:
-            if duration<stim_thresh:
-                duration += update_speed
+        # get angle from c++
+        mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
+        msg = mmap_file.read(4)
+        rat_position = float(struct.unpack('f', msg)[0])
+
+        # check if the position of rat is inside the window
+        rat_reached_target = tools.compare_results(target_angle, rat_position, OPTIONS["window"])
+
+        # display result
+        img = np.zeros((sample_dim, sample_dim, 3))
+        x = int(sample_dim/2 + np.cos(math.radians(target_angle))*(radius))
+        y = int(sample_dim/2 - np.sin(math.radians(target_angle))*(radius))
+
+        x_rat = int(sample_dim/2 + np.cos(math.radians(rat_position))*(radius))
+        y_rat = int(sample_dim/2 - np.sin(math.radians(rat_position))*(radius))
+
+        cv2.ellipse(img, (int(sample_dim/2), int(sample_dim/2)), (radius, radius), 0, (target_angle+OPTIONS["window"]/2)*-1, (target_angle-OPTIONS["window"]/2)*-1, 255, -1)
+        if flash_OnOFF == True:
+            cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x, y), (255, 255, 255), thickness=line_thickness)
+        cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x_rat, y_rat), (255, 100, 0), thickness=line_thickness)
+
+        if rat_reached_target == True:
+            cv2.circle(img, (int(sample_dim/10), int(sample_dim/10)), 5, (0, 0, 255), -1)
+
+        cv2.imshow('animation', img)
+        if cv2.waitKey(1) == ord('q'):
+            # press q to terminate the loop
+            cv2.destroyAllWindows()
+            tools.write_arduino(arduino, 9, light_strength, 3)
+            break
+
+        print(rat_position, round(target_angle%360), "     ", end='\r')
+        
+        elapsed_time = time.time()-start
+        write.writerow([elapsed_time, trial_num, rat_position, round(prev_target_position%360), round(target_position%360), rat_reached_target, light_strength])
+
+        # send stimulus to server
+        if OPTIONS["tcp_ip_connection"]:
+            s.send(func)
+            s.send(w)
+            s.send(h)
+            s.send(tools.draw_bar(math.radians(float(target_angle)), w, h))
+
+        # generate new target
+        if rat_reached_target or elapsed_time > OPTIONS["trial_length"]:
+
+            # give reward if rat reached target
+            if rat_reached_target:
+                # increment correct trial number
+                correct_trial_num += 1
+
+                # change behavior depending on task_mode
+                if OPTIONS["task_mode"] == "training":
+                    reward_start = time.time()
+                    tools.write_arduino(arduino, target_position, light_strength, 1)
+
+                    # give reward if rat is still inside the reward zone
+                    while time.time()-reward_start < OPTIONS["duration_after_reach"]: 
+                        # check if arduino is ready to recieve signal
+                        arduino_state = arduino.readline().decode().rstrip()
+                        if len(arduino_state) != 0:
+                            arduino_ready = arduino_state[-1]
+                        
+                        if arduino_ready == "1":
+                            # get angle from c++
+                            mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
+                            msg = mmap_file.read(4)
+                            rat_position = float(struct.unpack('f', msg)[0])
+
+                            # check if the rat is still in the target zone
+                            if tools.compare_results(target_angle, rat_position, OPTIONS["window"]):
+                                tools.write_arduino(arduino, target_position, light_strength, 1)
+                                print(rat_position, round(target_angle%360), light_strength)
+
+                elif OPTIONS["task_mode"] == "test":
+                    # send signal to Arduino
+                    tools.write_arduino(arduino, target_position, light_strength, 1)
+                    print(rat_position, round(target_angle%360), light_strength)
+
+            # generate new target that is different from previous
+            prev_target_position = target_position
+            if OPTIONS["led_selection_mode"] == "random":
+                while target_position == prev_target_position:
+                    target_position = np.random.randint(0, 8)
+            if OPTIONS["led_selection_mode"] == "adjacent":
+                target_position = target_position + np.random.choice([1,-1])
+                # fix if there is overlap [0, 1, 2, 3, 4, 5, 6, 7]
+                if target_position == -1:
+                    target_position = 7
+                if target_position == 8:
+                    target_position = 0
+
+            target_angle = target_position*360/8
+
+            # gnerate new led_brightness
+            light_strength = int(np.random.randint(OPTIONS["minimum_brightness"], OPTIONS["maximum_brightness"]))
+
+            # write target to arduino
+            tools.write_arduino(arduino, target_position, light_strength, 2)
+            if rat_reached_target:
+                # shorter interval
+                time.sleep(OPTIONS["trial_interval"])
             else:
-                # send signal to Arduino
-                tools.write_arduino(arduino, 1)
-                print(rat_position, round(target_angle%360), duration)
-                # reset
-                duration = 0
-        elif rat_inside_window == False:
-            rat_inside_window = True
-    else:
-        rat_inside_window = False
-        duration = 0
+                #long interval
+                time.sleep(OPTIONS["trial_interval"]*2)
+            tools.write_arduino(arduino, target_position, light_strength, 0)
+            
+            # reset goal
+            rat_reached_target = False
 
-    # display result
-    img = np.zeros((sample_dim, sample_dim, 3))
-    x = int(sample_dim/2 + np.cos(math.radians(target_angle))*(radius))
-    y = int(sample_dim/2 - np.sin(math.radians(target_angle))*(radius))
+            # next trial 
+            trial_num += 1
+            start = time.time()
 
-    x_rat = int(sample_dim/2 + np.cos(math.radians(rat_position))*(radius))
-    y_rat = int(sample_dim/2 - np.sin(math.radians(rat_position))*(radius))
+        time.sleep(OPTIONS["update_speed"]/1000)
 
-    cv2.ellipse(img, (int(sample_dim/2), int(sample_dim/2)), (radius, radius), 0, (target_angle+window/2)*-1, (target_angle-window/2)*-1, 255, -1)
-    cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x, y), (255, 255, 255), thickness=line_thickness)
-    cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x_rat, y_rat), (255, 100, 0), thickness=line_thickness)
-
-    if rat_inside_window == True:
-        cv2.circle(img, (int(sample_dim/10), int(sample_dim/10)), 5, (0, 0, 255), -1)
-
-    cv2.imshow('animation', img)
-    if cv2.waitKey(1) == ord('q'):
-        # press q to terminate the loop
-        cv2.destroyAllWindows()
-        break
-
-    print(rat_position, round(target_angle%360), duration, "     ", end='\r')
-
-    # Send image to server
-    # Below, the variable can be changed to either "1" or "2", which affects how the image is interpreted by PolyScan2.
-    # If "1", the uploaded image will fit within the EWA of the Polygon
-    # (e.g. entire image will be seen in EWA)
-    # If "2", the uploaded image will be truncated, so only the portion of the image within the EWA will be projected.
-    # (e.g. image fits within camera window, but only the portion of the image seen in EWA will be projected)
-
-    # send binary pattern to server ( 1bit/pixel )
-    
-    s.send(func)
-    s.send(w)
-    s.send(h)
-    s.send(tools.draw_bar(math.radians(float(target_angle)), img_w, img_h))
-    
-    time.sleep(update_speed/1000)
-
-# close TCP connection
+# close mmap
 mmap_file.close()
-s.close()
+
+#close file
+f.close()
+
+# close tcp connection
+if OPTIONS["tcp_ip_connection"]:
+    s.close()
