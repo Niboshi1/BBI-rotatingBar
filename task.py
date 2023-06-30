@@ -10,6 +10,7 @@ import math
 import cv2
 import csv
 import time
+import os
 
 class BBI_Trainer(object):
 
@@ -46,7 +47,7 @@ class BBI_Trainer(object):
 
         # define save file
         headers = ["time", "trial", "rat_position", "target_position_from",  "target_position_to", "reached_target", "brightness"]
-        filename = 'behavioral_results' + time.strftime("%Y%m%d-%H%M%S") + '.csv'
+        filename = os.path.join(self.config["save_dir"], 'behavioral_results' + time.strftime("%Y%m%d-%H%M%S") + '.csv')
 
         # start session
         start = time.time()
