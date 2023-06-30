@@ -114,6 +114,26 @@ with open(filename, 'a') as f:
         cv2.ellipse(img, (int(sample_dim/2), int(sample_dim/2)), (radius, radius), 0, (target_angle+OPTIONS["window"]/2)*-1, (target_angle-OPTIONS["window"]/2)*-1, 255, -1)
         if flash_OnOFF == True:
             cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x, y), (255, 255, 255), thickness=line_thickness)
+
+        # line indicating threshold for wrong trial
+        if shortest_path == "cw":
+            cw_ccw = 1
+        elif shortest_path == "ccw":
+            cw_ccw = -1
+        else:
+            cw_ccw = 0
+        cv2.line(
+            img, 
+            (int(sample_dim/2), int(sample_dim/2)), 
+            (
+                int(sample_dim/2 + np.cos(math.radians(init_rat_position+cw_ccw*OPTIONS["shortest_path_thresh"]))*(radius)), 
+                int(sample_dim/2 - np.sin(math.radians(init_rat_position+cw_ccw*OPTIONS["shortest_path_thresh"]))*(radius))
+                ), 
+            (0, 0, 255), 
+            thickness=line_thickness
+            )
+
+        # line indicating rat position
         cv2.line(img, (int(sample_dim/2), int(sample_dim/2)), (x_rat, y_rat), (255, 100, 0), thickness=line_thickness)
 
         # draw a circle when rat reaches target
