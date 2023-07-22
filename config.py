@@ -4,7 +4,8 @@ OPTIONS = {
     # choose led_selection_mode "ranodm" or "adjacent"
     # "random" : randomely select next target
     # "adjacent" : select adjacent location
-    "led_selection_mode" : "random",
+    # "force_counter_rotation" : select backward target position 
+    "led_selection_mode" : "force_counter_rotation",
 
     # choose task_mode "training" or "test"
     # "training" : LED will be on for 3 seconds even after the rat reached target
@@ -42,5 +43,5 @@ OPTIONS = {
 
     # parameters for trial
     "trial_length" : 5*60, # seconds, maximum length before target is updated
-    "trial_interval" : 3, # seconds, interval between trials
+    "trial_interval" : 2, # seconds, interval between trials
 }

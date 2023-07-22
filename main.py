@@ -20,7 +20,7 @@ def main(config):
 
             # Create directory
             config["save_dir"] = f"./results/new_protocol/rat{input}"
-            os.makedirs(config["save_dir"], exist_ok=False)
+            os.makedirs(config["save_dir"], exist_ok=True)
 
             # Start Session
             Task = BBI_Trainer(config)

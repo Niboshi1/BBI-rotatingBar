@@ -179,7 +179,7 @@ class BBI_Trainer(object):
                         time.sleep(self.config["trial_interval"])
                     else:
                         #long interval
-                        time.sleep(self.config["trial_interval"]*2)
+                        time.sleep(self.config["trial_interval"]*5)
 
 
                     # Prepare for next trial===========================================
@@ -201,6 +201,16 @@ class BBI_Trainer(object):
                             target_position = 7
                         if target_position == 8:
                             target_position = 0
+                    if self.config["led_selection_mode"] == "force_counter_rotation":
+                        if rat_reached_target:
+                            while target_position == prev_target_position or tools.calculate_shortest_path(init_rat_position, target_angle) == shortest_path:
+                                target_position = np.random.randint(0, 8)
+                                target_angle = target_position*360/8
+                        else:
+                            while target_position == prev_target_position or tools.calculate_shortest_path(init_rat_position, target_angle) != shortest_path:
+                                target_position = np.random.randint(0, 8)
+                                target_angle = target_position*360/8
+
                     target_angle = target_position*360/8
                     
                     # gnerate new led_brightness
