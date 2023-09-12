@@ -5,7 +5,7 @@ OPTIONS = {
     # "random" : randomely select next target
     # "adjacent" : select adjacent location
     # "force_counter_rotation" : select backward target position 
-    "led_selection_mode" : "force_counter_rotation",
+    "led_selection_mode" : "random",
 
     # choose task_mode "training" or "test"
     # "training" : LED will be on for 3 seconds even after the rat reached target
@@ -13,6 +13,8 @@ OPTIONS = {
     "task_mode" : "training",
     # if task_mode is "training", change how long rats can be in the area
     "duration_after_reach" : 3, # in seconds
+
+    "random_walk":True,
 
     # task to force the rat to take the shortest path
     "task_shortest_path" : True,
@@ -37,7 +39,7 @@ OPTIONS = {
     "minimum_brightness" : 20,
 
     # parameters for target
-    "window" : 15, # in degrees, threshold around the target
+    "window" : 30, # in degrees, threshold around the target
     "update_speed" : 100, # in ms, interval to send tcp/ip to OASYS
     "flash_thresh" : 5, # loop numebr, how often photostimulation should be turned on
 
