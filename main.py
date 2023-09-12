@@ -24,7 +24,10 @@ def main(config):
 
             # Start Session
             Task = BBI_Trainer(config)
-            Task.start_session()
+            if config["random_walk"]:
+                Task.session_randwalk()
+            else:
+                Task.session_8way()
         
     #Create an Entry widget to accept User Input
     label=Label(root, text="Enter Rat Number")
