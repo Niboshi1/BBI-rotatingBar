@@ -289,6 +289,7 @@ class BBI_Trainer(object):
         # start session
         start = time.time()
         walk_idx = 1
+        n_reward_received = 0
 
         # connect to server
         if self.config["tcp_ip_connection"]:
@@ -359,6 +360,11 @@ class BBI_Trainer(object):
                     if rat_reached_target:
                         # give reward if rat reached target for continuously over 1 seconds
                         if time.time()-time_within_target_win > thresh_time_reward:
+                            # report
+                            print(round(rat_position%360), round(target_angle%360), n_reward_received)
+                            # count up n_reward_received
+                            n_reward_received += 1
+
                             # send signal to Arduino
                             arduino_mfb.write(bytes("1", 'utf-8'))
                             print(rat_position, round(target_angle%360), walk_idx, time.time())
@@ -438,7 +444,8 @@ class BBI_Trainer(object):
         # start session
         start = time.time()
         walk_idx = 1
-
+        n_reward_received = 0
+        
         # blind parameters
         LED_off_duration = 15 # sec
         LED_on_duration = 15 # sec
@@ -533,9 +540,13 @@ class BBI_Trainer(object):
                     if rat_reached_target:
                         # give reward if rat reached target for continuously over 1 seconds
                         if time.time()-time_within_target_win > thresh_time_reward:
+                            # report
+                            print(round(rat_position%360), round(target_angle%360), n_reward_received)
+                            # count up n_reward_received
+                            n_reward_received += 1
+                            
                             # send signal to Arduino
                             arduino_mfb.write(bytes("1", 'utf-8'))
-                            print(rat_position, round(target_angle%360), walk_idx, time.time())
                             cooldown_start = time.time()
                             cooldown = True
                             # reset
