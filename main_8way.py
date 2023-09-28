@@ -16,7 +16,7 @@ host = "localhost"
 port = 2222
 
 # define Arduino
-arduino = serial.Serial(port='COM4', baudrate=115200, timeout=.1)
+arduino = serial.Serial(port='COM3', baudrate=115200, timeout=.1)
 
 # create start image
 sample_dim = 200

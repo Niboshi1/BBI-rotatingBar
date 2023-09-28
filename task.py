@@ -20,8 +20,8 @@ class BBI_Trainer(object):
 
     def session_8way(self):
         # define Arduino
-        arduino = serial.Serial(port='COM5', baudrate=115200, timeout=.1)
-        arduino_mfb = serial.Serial(port='COM4', baudrate=115200, timeout=.1)
+        arduino = serial.Serial(port='COM6', baudrate=115200, timeout=.1)
+        arduino_mfb = serial.Serial(port='COM5', baudrate=115200, timeout=.1)
         time.sleep(3) # wait for Arduino to initialize
 
         # parameters for the light pattern
@@ -251,8 +251,8 @@ class BBI_Trainer(object):
 
     def session_randwalk(self):
         # define Arduino
-        arduino = serial.Serial(port='COM5', baudrate=115200, timeout=.1)
-        arduino_mfb = serial.Serial(port='COM4', baudrate=115200, timeout=.1)
+        arduino = serial.Serial(port='COM6', baudrate=115200, timeout=.1)
+        arduino_mfb = serial.Serial(port='COM5', baudrate=115200, timeout=.1)
         time.sleep(3) # wait for Arduino to initialize
 
         # parameters for the light pattern
@@ -377,6 +377,177 @@ class BBI_Trainer(object):
                 
                 # gnerate new led_brightness
                 light_strength = int(np.random.randint(self.config["minimum_brightness"], self.config["maximum_brightness"]))
+
+                # send new target to arduino
+                tools.write_arduino(arduino, target_position, light_strength, 0)
+                time.sleep(1/100)
+    
+                # reset parameters
+                rat_reached_target = False
+                walk_idx += 1
+
+                #time.sleep(config["update_speed"]/1000)
+
+        # close mmap
+        mmap_file.close()
+
+        #close file
+        f.close()
+
+        # close tcp connection
+        if self.config["tcp_ip_connection"]:
+            s.close()
+    
+    def session_randwalk_blind(self):
+        # define Arduino
+        arduino = serial.Serial(port='COM6', baudrate=115200, timeout=.1)
+        arduino_mfb = serial.Serial(port='COM5', baudrate=115200, timeout=.1)
+        time.sleep(3) # wait for Arduino to initialize
+
+        # parameters for the light pattern
+        w = np.uint32(self.config["img_w"])
+        h = np.uint32(self.config["img_h"])
+        func = np.uint32(self.config["func_n"])
+
+        # parameters for LED light
+        light_strength = self.config["maximum_brightness"] # np.random.randint(config["minimum_brightness"], config["maximum_brightness"])
+
+        # initialize target
+        n_leds = 188 # number of addresable LEDs on track
+        target_position = 24 # 24 is equivalent to  45 degress on track
+        target_angle = target_position/n_leds*360
+        tools.write_arduino(arduino, target_position, light_strength, 0)
+
+        # generate random walk path
+        random_walk_path = tools.random_walk_filtered(init_position=target_position, step_n=70000, step=3)
+
+        rat_reached_target = False
+        time_within_target_win = time.time()
+        thresh_time_reward = 1 # seconds
+        cooldown = False
+        thresh_cooldown = 1 # seconds
+        cooldown_start = 0
+
+        flash_OnOFF = True
+        flash_frame = 1
+
+        # define save file
+        headers = ["time", "none", "rat_position", "none", "target_position", "reached_target", "brightness"]
+        filename = os.path.join(self.config["save_dir"], 'behavioral_results' + time.strftime("%Y%m%d-%H%M%S") + '.csv')
+
+        # start session
+        start = time.time()
+        walk_idx = 1
+
+        # blind parameters
+        LED_off_duration = 15 # sec
+        LED_on_duration = 15 # sec
+        LED_timer = time.time()
+        LED_on = True
+
+        # connect to server
+        if self.config["tcp_ip_connection"]:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            remote_ip = socket.gethostbyname(self.config["host"])
+            s.connect((remote_ip, self.config["port"]))
+
+        # open mapped memory
+        mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
+        msg = mmap_file.read(4)
+        init_rat_position = float(struct.unpack('f', msg)[0])
+
+        with open(filename, 'a') as f:
+            write = csv.writer(f)
+            write.writerow(headers)
+
+            while True:
+                # configure flash interval
+                if flash_frame%self.config["flash_thresh"] == 0:
+                    flash_OnOFF = True
+                    flash_frame = 1
+                else:
+                    flash_OnOFF = False
+                    flash_frame += 1
+
+                # get angle from c++
+                mmap_file = mmap.mmap(-1, 4, "my_mapping", access=mmap.ACCESS_READ)
+                msg = mmap_file.read(4)
+                rat_position = float(struct.unpack('f', msg)[0])
+
+                # check if the position of rat is inside the window
+                rat_reached_target = tools.compare_angles(target_angle, rat_position, self.config["window"])
+
+                # display result
+                img = self.draw_image(
+                    target_angle, 
+                    rat_position, 
+                    init_rat_position,
+                    rat_reached_target,
+                    None,
+                    )
+
+                cv2.imshow('animation', img)
+                if cv2.waitKey(1) == ord('q'):
+                    # press q to terminate the loop
+                    cv2.destroyAllWindows()
+
+                    # trun off lights on track
+                    tools.write_arduino(arduino, 9, light_strength, 3)
+                    break
+
+                elapsed_time = time.time()-start
+
+                LED_elapsed_time = time.time()-LED_timer
+                # if LED is on for LED_on_duration, turn off the LED
+                if LED_on:
+                    if LED_elapsed_time > LED_on_duration:
+                        LED_on = False
+                        LED_timer = time.time()
+                # if LED is off for LED_off_duration, turn on the LED
+                else:
+                    if LED_elapsed_time > LED_off_duration:
+                        LED_on = True
+                        LED_timer = time.time()
+
+                if LED_on:
+                    light_strength = self.config["maximum_brightness"]
+                    write.writerow([elapsed_time, -1, rat_position, -1, round(target_position%360), rat_reached_target, light_strength])
+                else:
+                    light_strength = 0
+                    write.writerow([elapsed_time, -1, rat_position, -1, round(target_position%360), rat_reached_target, light_strength])
+
+
+                # send stimulus to server
+                if self.config["tcp_ip_connection"]:
+                    s.send(func)
+                    s.send(w)
+                    s.send(h)
+                    s.send(tools.draw_bar(math.radians(float(target_angle)), w, h))
+
+                # give reward
+                if cooldown:
+                    if time.time() - cooldown_start > thresh_cooldown:
+                        cooldown = False
+                    time_within_target_win = time.time()
+                else:
+                    if rat_reached_target:
+                        # give reward if rat reached target for continuously over 1 seconds
+                        if time.time()-time_within_target_win > thresh_time_reward:
+                            # send signal to Arduino
+                            arduino_mfb.write(bytes("1", 'utf-8'))
+                            print(rat_position, round(target_angle%360), walk_idx, time.time())
+                            cooldown_start = time.time()
+                            cooldown = True
+                            # reset
+                            time_within_target_win = time.time()
+                    # reset time if rat is outside the boundary
+                    else:
+                        time_within_target_win = time.time()
+                #print(rat_position, round(target_angle%360), "     ", end='\r')
+
+                # generate new target based on random walk
+                target_position = int(random_walk_path[walk_idx])%n_leds
+                target_angle = target_position/n_leds*360
 
                 # send new target to arduino
                 tools.write_arduino(arduino, target_position, light_strength, 0)

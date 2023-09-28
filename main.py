@@ -25,7 +25,10 @@ def main(config):
             # Start Session
             Task = BBI_Trainer(config)
             if config["random_walk"]:
-                Task.session_randwalk()
+                if config["random_walk_blind"]:
+                    Task.session_randwalk_blind()
+                else:
+                    Task.session_randwalk()
             else:
                 Task.session_8way()
         

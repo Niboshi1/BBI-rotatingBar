@@ -15,6 +15,7 @@ OPTIONS = {
     "duration_after_reach" : 3, # in seconds
 
     "random_walk":True,
+    "random_walk_blind":True,
 
     # task to force the rat to take the shortest path
     "task_shortest_path" : True,
@@ -35,7 +36,7 @@ OPTIONS = {
     "func_n" : 1,
 
     # parameters for LED light
-    "maximum_brightness" : 50,
+    "maximum_brightness" : 255,
     "minimum_brightness" : 20,
 
     # parameters for target
